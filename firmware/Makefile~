@@ -8,7 +8,7 @@
 MCU = attiny2313
 FORMAT = ihex
 TARGET = main
-SRC = uart.c USI_TWI_Master.c $(TARGET).c
+SRC = USI_TWI_Master.c $(TARGET).c
 ASRC = 
 OPT = s
 

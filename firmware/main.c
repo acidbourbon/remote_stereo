@@ -16,6 +16,47 @@
 
 //############################ main #####################################
  
+ 
+ 
+ /* Initialize UART */
+void
+InitUART (unsigned char baudrate)
+{
+  /* Set the baud rate */
+  UBRRL = baudrate;
+
+  /* Enable UART receiver and transmitter */
+  UCSRB = (1 << RXEN) | (1 << TXEN);
+
+  /* set to 8 data bits, 1 stop bit */
+  UCSRC = (1 << UCSZ1) | (1 << UCSZ0);
+
+}
+
+/* Read and write functions */
+unsigned char
+ReceiveByte (void)
+{
+  /* Wait for incomming data */
+  while (!(UCSRA & (1 << RXC)));
+
+  /* Return the data */
+  return UDR;
+}
+
+void
+TransmitByte (unsigned char data)
+{
+  /* Wait for empty transmit buffer */
+  while (!(UCSRA & (1 << UDRE)));
+
+  /* Start transmittion */
+  UDR = data;
+}
+ 
+ 
+ 
+ 
 
 
 int main (void) {  
@@ -25,8 +66,11 @@ int main (void) {
   uint8_t counter = 0;
   unsigned int dummy;
   
-  uart_init( UART_BAUD_SELECT(UART_BAUD_RATE,F_CPU) );
-  sei();
+
+  unsigned char i;
+  InitUART (12);     /* Set the baudrate to
+2400 bps using a 3.6846MHz crystal */
+
   USI_TWI_Master_Initialise();
   
   
@@ -46,43 +90,23 @@ int main (void) {
   
   while(1){
     PORTB |= (1<<PB4);
-    uart_puts("test\r\n");
+
     _delay_ms(1000);
     PORTB &= ~(1<<PB4);
     //uart_puti(counter++);
-    while(1){
-      dummy = uart_getc();
-      if(dummy & UART_NO_DATA){
-        
-      } else {
-            if ( dummy & UART_FRAME_ERROR )
-            {
-                /* Framing Error detected, i.e no stop bit detected */
-                uart_puts("UART Frame Error: ");
-            }
-            if ( dummy & UART_OVERRUN_ERROR )
-            {
-                /* 
-                 * Overrun, a character already present in the UART UDR register was 
-                 * not read by the interrupt handler before the next character arrived,
-                 * one or more received characters have been dropped
-                 */
-                uart_puts("UART Overrun Error: ");
-            }
-            if ( dummy & UART_BUFFER_OVERFLOW )
-            {
-                /* 
-                 * We are not reading the receive buffer fast enough,
-                 * one or more received character have been dropped 
-                 */
-                uart_puts("Buffer overflow error: ");
-            }
-
-        uart_puti( dummy );
-        uart_puts("\r\n");
-      }
-    }
     _delay_ms(1000);
+    
+  
+  while (1)
+    {
+      TransmitByte (ReceiveByte () );       
+/* Echo the received character + 1.  Example send in A then send out B */
+      for (i = 0; i < 200; i++);
+    }
+
+    
+    
+    
   }
 
    return 0;              
