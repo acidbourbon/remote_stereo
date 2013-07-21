@@ -2,6 +2,9 @@
 #define UART_BAUD_RATE 19200
 #define F_CPU 1e6
 #define MESSAGEBUF_SIZE 10
+
+//1L=255  -> sets left channel of input 1 to 255
+#define CMDLENGTH 6
  
 #include <avr/io.h> 
 #include <avr/interrupt.h>
@@ -54,60 +57,103 @@ TransmitByte (unsigned char data)
   UDR = data;
 }
  
+
+void ledOn(void){
+     PORTB |= (1<<PB4); 
+}
  
- 
+void ledOff(void){
+       PORTB &= ~(1<<PB4);
+}
  
 
 
 int main (void) {  
-
-  unsigned char messageBuf[MESSAGEBUF_SIZE];
-  char textbuffer[10];
-  uint8_t counter = 0;
-  unsigned int dummy;
+  
+  
+  char i2cByte0[] = { 0b01011100, 0b01011100, 0b01011000, 0b01011010, 0b01011000, 0b01011010, 0b01011000, 0b01011010, 0b01011000, 0b01011010 };
+  char i2cByte1[] = { 0b00000000, 0b00010000, 0b00000000, 0b00000000, 0b00010000, 0b00010000, 0x60, 0x60, 0x70, 0x70 }; 
   
 
-  unsigned char i;
+  unsigned char messageBuf[MESSAGEBUF_SIZE];
+
   InitUART (12);     /* Set the baudrate to
-2400 bps using a 3.6846MHz crystal */
+4800 bps at 1 MHZ */
 
   USI_TWI_Master_Initialise();
   
   
-  messageBuf[0] = 0b01011000;
-  messageBuf[1] = 0x00;       
-  messageBuf[2] = 0xAB;
 
-        
-  USI_TWI_Start_Read_Write( messageBuf, 3 );
-
-  
-  DDR_USI =0;
-  PORT_USI = 0;
   
   DDRB |= (1<<PB4); // make LED pin output
 
-  
-  while(1){
-    PORTB |= (1<<PB4);
-
-    _delay_ms(1000);
-    PORTB &= ~(1<<PB4);
-    //uart_puti(counter++);
-    _delay_ms(1000);
     
+  char byte;
+  char cmdBuffer[8];
+  char numBuffer[4];
+  uint8_t volVal = 0;
+  uint8_t LR = 0;
+  uint8_t channel = 0;
+  uint8_t lookupIndex = 0;
+  uint8_t cmdPos = 0;
   
   while (1)
     {
-      TransmitByte (ReceiveByte () );       
-/* Echo the received character + 1.  Example send in A then send out B */
-      for (i = 0; i < 200; i++);
+      
+      byte = ReceiveByte();
+      
+      if(byte == '\r' || byte == '\n') {
+        
+        if (cmdPos == CMDLENGTH && cmdBuffer[2] == '='){
+          // evaluate the command string
+          
+          // copy the three vals by hand ...
+          numBuffer[0]=cmdBuffer[3];
+          numBuffer[1]=cmdBuffer[4];         
+          numBuffer[2]=cmdBuffer[5];
+          numBuffer[3]='\0';
+          
+          volVal=atoi(numBuffer);
+          
+          if(cmdBuffer[1] == 'L'){
+            LR = 0;
+          } else {
+            LR = 1;
+          }
+          
+          if(cmdBuffer[0] == 'M'){
+            channel=0;
+          } else {
+            cmdBuffer[1] = '\0';
+            channel=atoi(cmdBuffer);
+          }
+           
+          lookupIndex = (channel<<1) | LR;
+          
+          messageBuf[0] = i2cByte0[lookupIndex];
+          messageBuf[1] = i2cByte1[lookupIndex];
+          messageBuf[2] = volVal;
+          
+          USI_TWI_Start_Read_Write( messageBuf, 3 );
+          
+//           for (uint8_t i =0; i<volVal;i++){
+//             TransmitByte ('0');  
+//           }
+//           TransmitByte('\n');
+        }
+        
+        cmdPos=0;
+        ledOff();
+      } else {
+        ledOn();
+        // accumulate the command string
+        cmdBuffer[cmdPos++]=byte;
+      }
+        
+
     }
 
-    
-    
-    
-  }
+   
 
    return 0;              
 }
