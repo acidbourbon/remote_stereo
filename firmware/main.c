@@ -5,7 +5,7 @@
 
 //1L=255  -> sets left channel of input 1 to 255
 #define CMDLENGTH 6
- 
+
 #include <avr/io.h> 
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -36,6 +36,8 @@ InitUART (unsigned char baudrate)
 
 }
 
+
+
 /* Read and write functions */
 unsigned char
 ReceiveByte (void)
@@ -65,7 +67,25 @@ void ledOn(void){
 void ledOff(void){
        PORTB &= ~(1<<PB4);
 }
+
+void paMute(void){
+  // set mute pin
+     PORTB |= (1<<PB3); 
+}
  
+void paUnMute(void){
+  // clear mute pin
+       PORTB &= ~(1<<PB3);
+}
+
+ 
+ 
+
+void initPotis(void) {
+  //brings all potis to mute position
+  
+  
+}
 
 
 int main (void) {  
@@ -85,7 +105,7 @@ int main (void) {
   
 
   
-  DDRB |= (1<<PB4); // make LED pin output
+  DDRB |= (1<<PB4) | (1<<PB3); // make LED pin output, make MUTE pin output
 
     
   char byte;
@@ -97,6 +117,21 @@ int main (void) {
   uint8_t lookupIndex = 0;
   uint8_t cmdPos = 0;
   
+  
+  // initialize all potis with zero volume
+  
+  for(uint8_t i=0;i<10;i++){
+          messageBuf[0] = i2cByte0[i];
+          messageBuf[1] = i2cByte1[i];
+          messageBuf[2] = 0;
+          
+          USI_TWI_Start_Read_Write( messageBuf, 3 );
+  }
+  
+  
+  
+  // main loop, run forever
+  
   while (1)
     {
       
@@ -107,39 +142,50 @@ int main (void) {
         if (cmdPos == CMDLENGTH && cmdBuffer[2] == '='){
           // evaluate the command string
           
-          // copy the three vals by hand ...
-          numBuffer[0]=cmdBuffer[3];
-          numBuffer[1]=cmdBuffer[4];         
-          numBuffer[2]=cmdBuffer[5];
-          numBuffer[3]='\0';
           
-          volVal=atoi(numBuffer);
+          // is it a mute command?
+          if (cmdBuffer[0] == 'M' && cmdBuffer[1] == 'M') {
+            // so we received a command beginning with "MM"
+            if (cmdBuffer[3] == 'T' && cmdBuffer[4] == 'R' && cmdBuffer[5] == 'U') { // MUTE == TRUE?
+              paMute(); // MUTE!
+            } else {
+              paUnMute(); // not MUTE!
+            }
+            
+          } else { // was a volume command
+            
+            if(cmdBuffer[1] == 'L'){
+              LR = 0;
+            } else {
+              LR = 1;
+            }
+            
+            if(cmdBuffer[0] == 'M'){
+              channel=0;
+            } else {
+              // use the first character in command string 
+              // as channel 
+              cmdBuffer[1] = '\0';
+              channel=atoi(cmdBuffer);
+            }
+             
+            lookupIndex = (channel<<1) | LR;
+            
+            // calculate the volume ...
+            numBuffer[0]=cmdBuffer[3];
+            numBuffer[1]=cmdBuffer[4];         
+            numBuffer[2]=cmdBuffer[5];
+            numBuffer[3]='\0';
+            volVal=atoi(numBuffer);
+            
+            messageBuf[0] = i2cByte0[lookupIndex];
+            messageBuf[1] = i2cByte1[lookupIndex];
+            messageBuf[2] = volVal;
+            
+            USI_TWI_Start_Read_Write( messageBuf, 3 );
           
-          if(cmdBuffer[1] == 'L'){
-            LR = 0;
-          } else {
-            LR = 1;
           }
           
-          if(cmdBuffer[0] == 'M'){
-            channel=0;
-          } else {
-            cmdBuffer[1] = '\0';
-            channel=atoi(cmdBuffer);
-          }
-           
-          lookupIndex = (channel<<1) | LR;
-          
-          messageBuf[0] = i2cByte0[lookupIndex];
-          messageBuf[1] = i2cByte1[lookupIndex];
-          messageBuf[2] = volVal;
-          
-          USI_TWI_Start_Read_Write( messageBuf, 3 );
-          
-//           for (uint8_t i =0; i<volVal;i++){
-//             TransmitByte ('0');  
-//           }
-//           TransmitByte('\n');
         }
         
         cmdPos=0;
