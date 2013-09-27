@@ -1,9 +1,11 @@
 
-#define UART_BAUD_RATE 19200
 #define F_CPU 1e6
 #define MESSAGEBUF_SIZE 10
 
-//1L=255  -> sets left channel of input 1 to 255
+
+
+
+
 #define CMDLENGTH 6
 
 #include <avr/io.h> 
@@ -11,7 +13,10 @@
 #include <util/delay.h>
 #include <stdlib.h>
 
-#include "uart.h"
+
+// I got the source code for using the ATTiny2313 USI as I2C master
+// from http://www.instructables.com/id/I2C_Bus_for_ATtiny_and_ATmega/
+// thanks to instructables user doktec!
 #include "USI_TWI_Master.h"
 
 
@@ -61,36 +66,34 @@ TransmitByte (unsigned char data)
  
 
 void ledOn(void){
+  // turn debug led on
      PORTB |= (1<<PB4); 
 }
  
 void ledOff(void){
+  // turn debug led off
        PORTB &= ~(1<<PB4);
 }
 
 void paMute(void){
-  // set mute pin
+  // set power amp mute pin
      PORTB |= (1<<PB3); 
 }
  
 void paUnMute(void){
-  // clear mute pin
+  // clear power amp mute pin
        PORTB &= ~(1<<PB3);
 }
 
  
  
 
-void initPotis(void) {
-  //brings all potis to mute position
-  
-  
-}
 
 
 int main (void) {  
   
   
+  // arrays containing the address/command bytes to control the individual digipots
   char i2cByte0[] = { 0b01011100, 0b01011100, 0b01011000, 0b01011010, 0b01011000, 0b01011010, 0b01011000, 0b01011010, 0b01011000, 0b01011010 };
   char i2cByte1[] = { 0b00000000, 0b00010000, 0b00000000, 0b00000000, 0b00010000, 0b00010000, 0x60, 0x60, 0x70, 0x70 }; 
   
@@ -134,32 +137,58 @@ int main (void) {
   
   while (1)
     {
-      
+      // receive from UART
       byte = ReceiveByte();
       
+      
+      /* let me quickly explain the UART command format by examples:
+       * 
+       * [channel#][left/right]=[volume][carriage return (or) newline]
+       * 
+       *    1L=255  -> sets left channel of input 1 to 255 (maximum value)
+       *    2R=000  -> sets right channel of input 2 to 0 (minimum value)
+       *    MM=TRU  -> mutes the power amp
+       *    MM=FLS  -> unmutes the power amp
+       *    ML=128  -> set left channel of master volume to 128
+       *    MR=128  -> set right channel of master volume to 128
+       * 
+       * i think you get the idea
+       * 
+       */
+      
+      
+      
+      
+      // when carriage return or newline character is received
+      // evaluate the command you have just received
+      // given that you can make sense of it
       if(byte == '\r' || byte == '\n') {
         
+        // evaluate the command string
+        
+        // is there an equal sign, and is it in the right position?
         if (cmdPos == CMDLENGTH && cmdBuffer[2] == '='){
-          // evaluate the command string
           
           
           // is it a mute command?
           if (cmdBuffer[0] == 'M' && cmdBuffer[1] == 'M') {
             // so we received a command beginning with "MM"
             if (cmdBuffer[3] == 'T' && cmdBuffer[4] == 'R' && cmdBuffer[5] == 'U') { // MUTE == TRUE?
-              paMute(); // MUTE!
+              paMute(); // MUTE the PA!
             } else {
-              paUnMute(); // not MUTE!
+              paUnMute(); // not MUTE the PA!
             }
             
           } else { // was a volume command
             
-            if(cmdBuffer[1] == 'L'){
+            // commands for the left channel contain an L as second letter, if it's not an L, treat it as R
+            if(cmdBuffer[1] == 'L'){ 
               LR = 0;
             } else {
               LR = 1;
             }
             
+            // if command begins with an M, it means it's a master volume command
             if(cmdBuffer[0] == 'M'){
               channel=0;
             } else {
@@ -169,37 +198,42 @@ int main (void) {
               channel=atoi(cmdBuffer);
             }
              
+            // calculate the the index that leads us to the correct
+            // entry in the i2cByte0/i2cByte1 arrays
             lookupIndex = (channel<<1) | LR;
             
             // calculate the volume ...
+            // quick and ugly way to copy three bytes between arrays
+            // no need to use strcpy :D
             numBuffer[0]=cmdBuffer[3];
             numBuffer[1]=cmdBuffer[4];         
             numBuffer[2]=cmdBuffer[5];
-            numBuffer[3]='\0';
+            numBuffer[3]='\0'; // terminate the string
             volVal=atoi(numBuffer);
             
-            messageBuf[0] = i2cByte0[lookupIndex];
-            messageBuf[1] = i2cByte1[lookupIndex];
-            messageBuf[2] = volVal;
+            messageBuf[0] = i2cByte0[lookupIndex]; // load address byte 0
+            messageBuf[1] = i2cByte1[lookupIndex]; // load address/data byte 1
+            messageBuf[2] = volVal; // third byte is poti wiper position
             
+            // send command to the poti
             USI_TWI_Start_Read_Write( messageBuf, 3 );
           
           }
           
         }
         
-        cmdPos=0;
-        ledOff();
+        cmdPos=0; // reset character counter
+        ledOff(); // turn debug led off after successful/unsuccessful execution of command
       } else {
-        ledOn();
+        ledOn(); // command is not complete, turn led on to show that you are still waiting
         // accumulate the command string
         cmdBuffer[cmdPos++]=byte;
       }
         
 
-    }
+    } // end of main loop
 
-   
+   // never reached
 
    return 0;              
 }
