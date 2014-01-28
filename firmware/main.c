@@ -126,7 +126,7 @@ int main (void) {
   for(uint8_t i=0;i<10;i++){
           messageBuf[0] = i2cByte0[i];
           messageBuf[1] = i2cByte1[i];
-          messageBuf[2] = 0;
+          messageBuf[2] = 220;
           
           USI_TWI_Start_Read_Write( messageBuf, 3 );
   }
